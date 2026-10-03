@@ -23,9 +23,10 @@
 
 ![alt text](image-4.png)
 
-ПРИМЕР генерации в файле iskovoe-zayavlenie (1).docx. Фрагмент генерации на скрине:
+ПРИМЕР генерации в файле iskovoe-zayavlenie (1).docx.
 
-![alt text](image.png)
+<img width="785" height="1006" alt="image" src="https://github.com/user-attachments/assets/115f5df9-10e6-4e36-986a-0e3152460101" />
+
 
 ## Описание использования
 
