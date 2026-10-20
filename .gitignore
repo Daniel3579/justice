@@ -16,4 +16,4 @@ data/documents/
 *.secret
 
 *.log
-
+*.DS_Store
