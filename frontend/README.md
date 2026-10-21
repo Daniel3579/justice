@@ -51,12 +51,6 @@
 
 ![Тёмная тема](docs/screenshots/dark.png)
 
-### Мобильная версия
-
-| Главный экран | Список чатов |
-|---|---|
-| <img src="frontend/docs/screenshots/mobile.png" width="300"> | <img src="frontend/docs/screenshots/mobile-menu.png" width="300"> |
-
 ---
 
 ## Стек
