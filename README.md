@@ -21,7 +21,7 @@
 
 ## Стурктура проекта
 
-![alt text](image-4.png)
+![alt text](images/image-4.png)
 
 ПРИМЕР генерации в файле iskovoe-zayavlenie (1).docx.
 
@@ -42,15 +42,15 @@
 
 - Запрос к generate/docx: 
 
-![alt text](image-1.png)
+![alt text](images/image-1.png)
 
 - Ответ:
 
-![alt text](image-3.png)
+![alt text](images/image-3.png)
 
 - Лог:
 
-![alt text](image-2.png)
+![alt text](images/image-2.png)
 
 
 ### * Исключены из репозитория:
