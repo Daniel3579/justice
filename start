@@ -1,0 +1,3 @@
+cd C:\Users\bakla\OneDrive\Документы\JUSTICE\app
+.venv\Scripts\activate
+$env:PYTHONPATH = ""
