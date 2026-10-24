@@ -1,22 +1,40 @@
 import { request, requestJSON } from "./client";
 
-export interface GenerateResponse {
-  facts: unknown;
-  isk: string;
-  sources: { local: string; web: string };
+export interface Source {
+  tag: string;
+  title: string;
+  url: string | null;
+  excerpt: string;
+  used: boolean;
 }
 
-/** POST /generate — текст иска (JSON). */
-export function generateIsk(text: string, signal?: AbortSignal) {
-  return requestJSON<GenerateResponse>("/generate", {
+export interface CaseState {
+  story: string;
+  facts: Record<string, unknown>;
+  context: Record<string, unknown>;
+  isk: string;
+  missing: string[];
+  sources: Source[];
+}
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export type ChatResponse =
+  | { type: "isk"; updated: boolean; case: CaseState }
+  | { type: "answer"; answer: string };
+
+export function sendChat(message: string, history: ChatTurn[], current: CaseState | null, signal?: AbortSignal) {
+  return requestJSON<ChatResponse>("/chat", {
     method: "POST",
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ message, history, case: current }),
     signal,
   });
 }
 
-/** POST /generate/docx — готовый .docx. Сейчас бэкенд генерирует иск заново по исходному тексту. */
-export async function generateDocx(text: string): Promise<Blob> {
-  const r = await request("/generate/docx", { method: "POST", body: JSON.stringify({ text }) });
+export async function exportDocx(context: CaseState["context"]): Promise<Blob> {
+  const r = await request("/export/docx", { method: "POST", body: JSON.stringify({ context }) });
   return r.blob();
 }

@@ -4,10 +4,10 @@ import { ArrowUpIcon } from "./Icons";
 interface Props {
   onSend: (text: string) => void;
   disabled?: boolean;
+  placeholder?: string;
 }
 
-/** Строка ввода: растёт по высоте, Enter — отправить, Shift+Enter — новая строка. */
-export function Composer({ onSend, disabled }: Props) {
+export function Composer({ onSend, disabled, placeholder = "Опишите, что произошло…" }: Props) {
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -41,7 +41,7 @@ export function Composer({ onSend, disabled }: Props) {
         ref={ref}
         rows={1}
         value={text}
-        placeholder="Опишите, что произошло…"
+        placeholder={placeholder}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
       />

@@ -12,7 +12,7 @@ export function writeJSON(key: string, value: unknown): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    /* игнорируем */
+    /* игнорир */
   }
 }
 

@@ -1,68 +1,120 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { readJSON, writeJSON } from "./storage";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { fetchChats, removeChat, saveChat } from "../api/chats";
+import type { CaseState } from "../api/generate";
 
 export type Message =
   | { role: "user"; text: string }
-  | { role: "assistant"; text: string; source: string }
+  | { role: "pending" }
   | { role: "error"; text: string }
-  | { role: "pending" };
+  | {
+      role: "assistant";
+      kind?: "isk" | "answer";
+      text: string;
+      case?: CaseState;
+      updated?: boolean;
+      source?: string;
+    };
 
 export interface Chat {
   id: string;
   title: string;
   messages: Message[];
-  createdAt: number;
+  updatedAt: number;
 }
 
 interface ChatsState {
   chats: Chat[];
-  getChat: (id: string | undefined) => Chat | undefined;
+  getChat: (id?: string) => Chat | undefined;
   createChat: (firstMessage: string) => Chat;
-  updateChat: (id: string, fn: (c: Chat) => Chat) => void;
+  updateChat: (id: string, update: (chat: Chat) => Chat) => void;
   deleteChat: (id: string) => void;
-  clearAll: () => void;
 }
 
 const ChatsContext = createContext<ChatsState | null>(null);
 
-/**
- * История чатов. Пока хранится в браузере, отдельно для каждого пользователя.
- * Когда на бэкенде появится /chats, менять нужно только этот файл.
- */
+function makeTitle(text: string): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length > 60 ? t.slice(0, 57) + "…" : t || "Новый чат";
+}
+
+function newId(): string {
+  return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function ChatsProvider({ userKey, children }: { userKey: string; children: ReactNode }) {
-  const storeKey = `justice.chats.${userKey}`;
-  const [chats, setChats] = useState<Chat[]>(() =>
-    // незавершённые запросы после перезагрузки страницы убираем
-    readJSON<Chat[]>(storeKey, []).map((c) => ({ ...c, messages: c.messages.filter((m) => m.role !== "pending") })),
-  );
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [attempt, setAttempt] = useState(0);
+  const chatsRef = useRef<Chat[]>([]);
+  const queue = useRef(new Map<string, Promise<void>>());
 
-  useEffect(() => writeJSON(storeKey, chats), [storeKey, chats]);
+  const commit = (next: Chat[]) => {
+    chatsRef.current = next;
+    setChats(next);
+  };
 
-  const getChat = useCallback((id: string | undefined) => chats.find((c) => c.id === id), [chats]);
-
-  const createChat = useCallback((firstMessage: string) => {
-    const chat: Chat = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      title: firstMessage.replace(/\s+/g, " ").slice(0, 60),
-      messages: [],
-      createdAt: Date.now(),
+  useEffect(() => {
+    let alive = true;
+    setStatus("loading");
+    fetchChats()
+      .then((list) => {
+        if (!alive) return;
+        commit(list);
+        setStatus("ready");
+      })
+      .catch((e) => {
+        console.error("Не удалось загрузить чаты", e);
+        if (alive) setStatus("error");
+      });
+    return () => {
+      alive = false;
     };
-    setChats((cs) => [chat, ...cs]);
-    return chat;
-  }, []);
+  }, [userKey, attempt]);
 
-  const updateChat = useCallback((id: string, fn: (c: Chat) => Chat) => {
-    setChats((cs) => cs.map((c) => (c.id === id ? fn(c) : c)));
-  }, []);
+  const enqueue = (id: string, task: () => Promise<void>) => {
+    const prev = queue.current.get(id) ?? Promise.resolve();
+    const next = prev.then(task).catch((e) => console.error("Не удалось сохранить чат", e));
+    queue.current.set(id, next);
+  };
 
-  const deleteChat = useCallback((id: string) => setChats((cs) => cs.filter((c) => c.id !== id)), []);
-  const clearAll = useCallback(() => setChats([]), []);
-
-  return (
-    <ChatsContext.Provider value={{ chats, getChat, createChat, updateChat, deleteChat, clearAll }}>
-      {children}
-    </ChatsContext.Provider>
+  const value = useMemo<ChatsState>(
+    () => ({
+      chats,
+      getChat: (id) => (id ? chats.find((c) => c.id === id) : undefined),
+      createChat: (firstMessage) => {
+        const chat: Chat = { id: newId(), title: makeTitle(firstMessage), messages: [], updatedAt: Date.now() };
+        commit([chat, ...chatsRef.current]);
+        return chat;
+      },
+      updateChat: (id, update) => {
+        const current = chatsRef.current.find((c) => c.id === id);
+        if (!current) return;
+        const next = { ...update(current), updatedAt: Date.now() };
+        commit([next, ...chatsRef.current.filter((c) => c.id !== id)]);
+        enqueue(id, () => saveChat(next));
+      },
+      deleteChat: (id) => {
+        commit(chatsRef.current.filter((c) => c.id !== id));
+        enqueue(id, () => removeChat(id));
+      },
+    }),
+    [chats],
   );
+
+  if (status === "loading") return null;
+
+  if (status === "error") {
+    return (
+      <div className="stage">
+        <div className="home">
+          <div className="error-box">Не удалось загрузить чаты. Проверьте, что бэкенд запущен.</div>
+          <button className="chip" onClick={() => setAttempt((a) => a + 1)}>Повторить</button>
+        </div>
+      </div>
+    );
+  }
+
+  return <ChatsContext.Provider value={value}>{children}</ChatsContext.Provider>;
 }
 
 export function useChats(): ChatsState {

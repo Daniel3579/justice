@@ -178,3 +178,21 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   .open-sidebar { display: grid; }
   .doc { padding: 16px 18px; }
 }
+
+.answer { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+.hint-box {
+  margin-top: 14px; padding: 12px 16px; border-radius: 12px; border: 1px dashed var(--line);
+  background: color-mix(in srgb, var(--accent) 6%, transparent); font-size: 14px;
+}
+.hint-title { font-weight: 500; margin-bottom: 4px; }
+.hint-box ul { margin: 4px 0 6px; padding-left: 20px; }
+.hint-box li { margin: 2px 0; }
+.hint-note { color: var(--muted); font-size: 13px; }
+.sources { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.sources summary { cursor: pointer; user-select: none; padding: 4px 0; }
+.sources summary:hover { color: var(--text); }
+.source { padding: 8px 0; border-top: 1px solid var(--line); }
+.source:first-of-type { border-top: 0; }
+.source-head { color: var(--text); font-weight: 500; margin-bottom: 2px; }
+.source-head a { color: inherit; }
+.source-text { white-space: pre-wrap; overflow-wrap: anywhere; }
