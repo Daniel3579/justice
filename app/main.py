@@ -1,135 +1,179 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, FileResponse
+import logging
+from typing import Literal
+
 import uvicorn
-import os
-import re
-import tempfile
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import JSONResponse, Response
+from jinja2 import TemplateError
+from pydantic import BaseModel, Field
 
-from docx import Document
+import storage
+from config import MAX_MESSAGE_CHARS, MIN_PASSWORD_LENGTH
+from generator import generate_case, handle_chat
+from render import marked_to_docx, render_marked
 
-from generator import generate_isk
+logging.basicConfig(level=logging.INFO)
+
+storage.init_db()
 
 app = FastAPI(title="Генератор исков")
 
-class AskRequest(BaseModel):
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+class GenerateRequest(BaseModel):
     text: str
 
 
-def clean_text(text: str) -> str:
-    # очистка текстового мусора
-    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-    text = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
-    # переводы строк
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
 
 
-def text_to_docx(text: str, path: str):
-    # текст в .docx с форматированием
-    from docx.shared import Pt
-    from docx.oxml.ns import qn
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatTurn] = Field(default_factory=list)
+    case: dict | None = None
+    draft: dict | None = None
+    force: bool = False
 
-    doc = Document()
 
-    # шрифт
-    style = doc.styles["Normal"]
-    style.font.name = "Times New Roman"
-    style.font.size = Pt(14)
-    # фикс для кириллицы 
-    style.element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
+class ExportRequest(BaseModel):
+    context: dict
 
-    #  параграфы
-    for line in text.split("\n"):
-        line = line.rstrip()
-        if not line:
-            doc.add_paragraph("")
-        else:
-            p = doc.add_paragraph(line)
-            p.paragraph_format.space_after = Pt(0)
-            p.paragraph_format.line_spacing = 1.15
-            # принудительно шрифт каждому run
-            for run in p.runs:
-                run.font.name = "Times New Roman"
-                run.font.size = Pt(14)
-                run._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
 
-    doc.save(path)
+class Credentials(BaseModel):
+    email: str
+    password: str
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ChatSave(BaseModel):
+    title: str = Field(max_length=200)
+    messages: list[dict]
+
+
+def error(message: str, status: int) -> JSONResponse:
+    return JSONResponse({"error": message}, status_code=status)
+
+
+def validate_text(text: str) -> str | None:
+    text = text.strip()
+    if not text or len(text) > MAX_MESSAGE_CHARS:
+        return None
+    return text
+
+
+def normalize_email(email: str) -> str:
+    email = email.strip().lower()
+    if "@" not in email or len(email) > 254:
+        raise HTTPException(400, "Укажите корректную почту")
+    return email
+
+
+def check_new_password(password: str):
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(400, f"Пароль должен быть не короче {MIN_PASSWORD_LENGTH} символов")
+
+
+def current_user(authorization: str | None = Header(default=None)) -> dict:
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    user = storage.user_by_token(token) if token else None
+    if not user:
+        raise HTTPException(401, "Не авторизован")
+    return user
+
+
+@app.post("/auth/register")
+def register(body: Credentials):
+    email = normalize_email(body.email)
+    check_new_password(body.password)
+    if not storage.create_user(email, body.password):
+        raise HTTPException(409, "Аккаунт с такой почтой уже существует")
+    return {"access_token": storage.create_session(email)}
+
+
+@app.post("/auth/login")
+def login(body: Credentials):
+    email = normalize_email(body.email)
+    if not storage.check_password(email, body.password):
+        raise HTTPException(401, "Неверная почта или пароль")
+    return {"access_token": storage.create_session(email)}
+
+
+@app.get("/me")
+def me(user: dict = Depends(current_user)):
+    return user
+
+
+@app.post("/me/password", status_code=204)
+def change_password(body: PasswordChange, user: dict = Depends(current_user)):
+    if not storage.check_password(user["email"], body.current_password):
+        raise HTTPException(400, "Текущий пароль указан неверно")
+    check_new_password(body.new_password)
+    storage.set_password(user["email"], body.new_password)
+
+
+@app.delete("/me", status_code=204)
+def delete_me(user: dict = Depends(current_user)):
+    storage.delete_user(user["email"])
+
+
+@app.get("/chats")
+def get_chats(user: dict = Depends(current_user)):
+    return storage.list_chats(user["email"])
+
+
+@app.put("/chats/{chat_id}", status_code=204)
+def put_chat(chat_id: str, body: ChatSave, user: dict = Depends(current_user)):
+    storage.save_chat(user["email"], chat_id, body.title, body.messages)
+
+
+@app.delete("/chats/{chat_id}", status_code=204)
+def remove_chat(chat_id: str, user: dict = Depends(current_user)):
+    storage.delete_chat(user["email"], chat_id)
 
 
 @app.post("/generate")
-async def generate(req: AskRequest):
-    # возвращает JSON для отладки
-    user_text = req.text.strip()
-    if not user_text:
-        return JSONResponse({"error": "Поле 'text' обязательно"}, status_code=400)
-
+def generate(req: GenerateRequest):
+    text = validate_text(req.text)
+    if not text:
+        return error(f"Поле 'text' обязательно (до {MAX_MESSAGE_CHARS} символов)", 400)
     try:
-        result = generate_isk(user_text)
-        return {
-            "facts": result["facts"],
-            "isk": result["isk"],
-            "sources": {
-                "local": result["local_norms"][:2000],
-                "web": result["web_norms"][:2000],
-            }
-        }
+        return generate_case(text)
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logging.exception("Ошибка генерации")
+        return error(str(e), 500)
 
 
-@app.post("/generate/docx")
-async def generate_docx(req: AskRequest):
-    # возвращает иск как .docx файл
-    user_text = req.text.strip()
-    if not user_text:
-        return JSONResponse({"error": "Поле 'text' обязательно"}, status_code=400)
-
+@app.post("/chat")
+def chat(req: ChatRequest):
+    message = validate_text(req.message)
+    if not message:
+        return error(f"Сообщение обязательно (до {MAX_MESSAGE_CHARS} символов)", 400)
     try:
-        result = generate_isk(user_text)
-        isk_text = clean_text(result["isk"])
-
-        # временный файл
-        tmp = tempfile.NamedTemporaryFile(
-            delete=False, suffix=".docx", prefix="isk_"
-        )
-        tmp.close()
-        text_to_docx(isk_text, tmp.name)
-
-        return FileResponse(
-            tmp.name,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            filename="iskovoe_zayavlenie.docx",
-        )
+        history = [t.model_dump() for t in req.history]
+        return handle_chat(message, history, req.case, req.draft, req.force)
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logging.exception("Ошибка чата")
+        return error(str(e), 500)
 
 
-@app.post("/generate/txt")
-async def generate_txt(req: AskRequest):
-    """Возвращает иск как .txt — если docx не нужен."""
-    user_text = req.text.strip()
-    if not user_text:
-        return JSONResponse({"error": "Поле 'text' обязательно"}, status_code=400)
-
+@app.post("/export/docx")
+def export_docx(req: ExportRequest):
     try:
-        result = generate_isk(user_text)
-        isk_text = clean_text(result["isk"])
-
-        tmp = tempfile.NamedTemporaryFile(
-            delete=False, suffix=".txt", prefix="isk_",
-            mode="w", encoding="utf-8"
-        )
-        tmp.write(isk_text)
-        tmp.close()
-
-        return FileResponse(
-            tmp.name,
-            media_type="text/plain; charset=utf-8",
-            filename="iskovoe_zayavlenie.txt",
-        )
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        content = marked_to_docx(render_marked(req.context))
+    except TemplateError as e:
+        return error(f"Некорректные данные иска: {e}", 400)
+    return Response(
+        content=content,
+        media_type=DOCX_MIME,
+        headers={"Content-Disposition": 'attachment; filename="iskovoe_zayavlenie.docx"'},
+    )
 
 
 if __name__ == "__main__":
