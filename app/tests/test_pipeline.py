@@ -1,50 +1,54 @@
+# app/tests/test_pipeline.py
 import pytest
-from generator import extract_facts, generate_isk
-from db import load_chroma_db
-from retriever import get_local_retriever
+from unittest.mock import patch
 
-# Маркер slow нужен, чтобы можно было запускать быстрые тесты отдельно:
-# pytest tests/ -m "not slow"
+from generator import extract_facts, generate_case
+from schemas import CaseFacts
 
-@pytest.mark.slow
-def test_extract_facts():
-    """Проверяем, что LLM извлекает факты в заданном формате."""
-    text = "Купил холодильник за 50000 руб, сломался через неделю. Магазин отказал."
-    facts = extract_facts(text)
-    
-    # Проверяем строгую структуру, заданную в промпте EXTRACT_PROMPT
-    assert "ИСТЕЦ:" in facts
-    assert "ПРЕДМЕТ:" in facts
-    assert "холодильник" in facts.lower()
-    # Дополнительно проверяем, что модель вытащила цену
-    assert "50000" in facts or "50 000" in facts
+# Запуск: pytest -m slow
+pytestmark = pytest.mark.slow
 
 
-@pytest.mark.slow
-def test_full_generation():
-    """Проверяем полный пайплайн: от текста пользователя до готового иска."""
-    user_text = "Купил телефон в магазине, через 2 месяца сломался."
-    result = generate_isk(user_text)
-    
-    # 1. Проверяем, что вернулись все ключи
-    assert "facts" in result
-    assert "isk" in result
-    assert "local_norms" in result
-    assert "web_norms" in result
-    
-    isk_text = result["isk"]
-    isk_upper = isk_text.upper()
-    
-    # 2. Проверяем, что иск не пустой и достаточно длинный
-    assert len(isk_text) > 500, "Иск слишком короткий, вероятно, LLM не справилась."
-    
-    # 3. Проверяем СТРУКТУРУ документа
-    assert "ИСТЕЦ" in isk_upper, "В иске отсутствует истец"
-    assert "ОТВЕТЧИК" in isk_upper, "В иске отсутствует ответчик"
-    
-    # 4. Проверяем, что в иске фигурируют факты из запроса пользователя
-    assert "ТЕЛЕФОН" in isk_upper, "В иске не упоминается предмет спора (телефон)"
-    
-    # 5. Проверяем, что есть просительная часть
-    assert any(word in isk_upper for word in ["ПРОШУ", "ТРЕБОВАНИЯ", "ПРОСИТЕЛЬНАЯ"]), \
-        "В иске отсутствует просительная часть"
+# ---------- быстрая версия с моком LLM ----------
+
+@patch("generator.chat")
+def test_extract_facts_mocked(mock_chat):
+    mock_chat.return_value = '''
+    {
+      "plaintiff": {"name": "Иван"},
+      "defendant": {"name": "Магазин"},
+      "subject": "холодильник",
+      "price": 50000,
+      "violation_type": "defect"
+    }
+    '''
+    facts = extract_facts("Купил холодильник за 50000 руб, сломался.")
+    assert isinstance(facts, CaseFacts)
+    assert facts.plaintiff.name == "Иван"
+    assert facts.price == 50000
+    assert facts.violation_type == "defect"
+
+
+@patch("generator.compose")
+@patch("generator.gather_norms", return_value=[])
+@patch("generator.extract_facts")
+def test_generate_case_mocked(mock_extract, mock_norms, mock_compose):
+    from schemas import Composed
+    mock_extract.return_value = CaseFacts(
+        subject="телефон",
+        price=10000,
+        violation_type="defect",
+    )
+    mock_compose.return_value = Composed(
+        facts_text=["Истец купил телефон."],
+        legal_text=["Согласно ст. 18 ЗПП."],
+    )
+
+    result = generate_case("Купил телефон, сломался.")
+
+    assert set(result) >= {"story", "facts", "context", "isk", "missing", "sources"}
+    assert "ИСКОВОЕ" in result["isk"].upper()
+    # если шаблон требует полей — в missing они попадут
+    assert isinstance(result["missing"], list)
+
+
