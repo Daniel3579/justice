@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 APP_DIR = Path(__file__).resolve().parent
 BASE_DIR = APP_DIR.parent
@@ -8,10 +9,10 @@ CHROMA_DB_PATH = BASE_DIR / "data" / "chroma_db"
 TEMPLATES_PATH = APP_DIR / "templates"
 ISK_TEMPLATE = "isk.j2"
 
-EMBEDDING_MODEL = "nomic-embed-text"
-
-OLLAMA_URL = "http://127.0.0.1:11434"
-LLM_MODEL = "qwen3.5:4b" # изменена модель на более легкую для тестирования
+# по умолчанию
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3.5:4b") # изменена модель на более легкую для тестирования
 NUM_CTX = 8192
 KEEP_ALIVE = "15m"
 LLM_TIMEOUT = 600
