@@ -343,9 +343,70 @@ Frontend помещает отображаемый текст иска в буф
 
 ---
 
-## Архитектура AI-конвейера MVP
+## Диаграмма последовательности
 
-![AI-конвейер MVP](images/mvp11.png)
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Пользователь
+    participant FE as Frontend (React)
+    participant BE as Backend (FastAPI)
+    participant LLM as Qwen 3.5 4B (Ollama)
+    participant DB as ChromaDB
+    participant WS as DDGS
+    participant DX as python-docx
+
+    U->>FE: Сообщение
+    FE->>BE: POST /chat | /generate
+
+    alt Пусто или > 8000 символов
+        BE-->>FE: HTTP 400
+        FE-->>U: Ошибка валидации
+    else Валидно
+        BE->>BE: Классификация намерения
+
+        alt new_case
+            BE->>LLM: Извлечение фактов
+            LLM-->>BE: CaseFacts (Pydantic)
+            par Параллельный поиск
+                BE->>DB: Локальный поиск
+                DB-->>BE: Фрагменты норм
+            and
+                BE->>WS: Веб-поиск
+                WS-->>BE: Веб-источники
+            end
+            BE->>BE: build_context + calc.py
+            BE->>LLM: Генерация иска по isk.j2
+            LLM-->>BE: Текст иска
+            BE-->>FE: isk · facts · missing · sources
+            FE-->>U: Карточка иска
+        else update
+            BE->>BE: Объединить фабулу + дополнение
+            BE->>LLM: Повторный конвейер
+            LLM-->>BE: Обновлённый иск (updated=true)
+            BE-->>FE: Обновлённый результат
+            FE-->>U: Обновлённая карточка
+        else question
+            BE->>DB: Локальный поиск
+            DB-->>BE: Нормы
+            BE->>LLM: Ответ с учётом дела, иска, истории
+            LLM-->>BE: Текстовый ответ
+            BE-->>FE: Ответ
+            FE-->>U: Сообщение в чате
+        end
+    end
+
+    Note over FE,DX: Отдельная ветка — экспорт DOCX
+    FE->>BE: POST /export/docx (context)
+    alt TemplateError
+        BE-->>FE: HTTP 400
+    else OK
+        BE->>DX: Рендер isk.j2 + сборка .docx
+        DX-->>BE: iskovoe_zayavlenie.docx
+        BE-->>FE: .docx
+        FE-->>U: Скачивание файла
+    end
+```
 
 ---
 
