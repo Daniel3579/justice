@@ -24,7 +24,10 @@ export interface ChatTurn {
 
 export type ChatResponse =
   | { type: "isk"; updated: boolean; case: CaseState }
-  | { type: "answer"; answer: string };
+  | { type: "answer"; answer: string }
+  | { type: "off_topic"; text: string };
+
+export type ExportFormat = "docx" | "pdf" | "md";
 
 export function sendChat(message: string, history: ChatTurn[], current: CaseState | null, signal?: AbortSignal) {
   return requestJSON<ChatResponse>("/chat", {
@@ -34,7 +37,7 @@ export function sendChat(message: string, history: ChatTurn[], current: CaseStat
   });
 }
 
-export async function exportDocx(context: CaseState["context"]): Promise<Blob> {
-  const r = await request("/export/docx", { method: "POST", body: JSON.stringify({ context }) });
+export async function exportFile(context: CaseState["context"], format: ExportFormat): Promise<Blob> {
+  const r = await request(`/export/${format}`, { method: "POST", body: JSON.stringify({ context }) });
   return r.blob();
 }

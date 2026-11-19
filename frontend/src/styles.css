@@ -196,3 +196,32 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .source-head { color: var(--text); font-weight: 500; margin-bottom: 2px; }
 .source-head a { color: inherit; }
 .source-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---------- Запрос не по теме ---------- */
+.offtopic {
+  color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  padding: 12px 16px; border-radius: 12px; line-height: 1.55;
+}
+.offtopic-title { font-weight: 600; margin-bottom: 4px; }
+
+/* ---------- Восстановление пароля ---------- */
+.auth-done { display: flex; flex-direction: column; gap: 12px; line-height: 1.5; }
+.auth-done p { margin: 0; }
+.submit.as-link { display: block; text-align: center; text-decoration: none; }
+
+/* ---------- Администрирование ---------- */
+.admin { max-width: 760px; }
+.admin-message { margin: -8px 0 16px; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; padding: 16px 0 8px; }
+.stat-value { font-family: Lora, Georgia, serif; font-size: 28px; font-weight: 500; }
+.stat-label { color: var(--muted); font-size: 13px; }
+.stat-sub { color: var(--accent); font-size: 12px; margin-top: 2px; }
+.admin-table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; font-size: 14px; }
+.admin-table th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+.admin-table td { padding: 9px 6px; border-bottom: 1px solid var(--line); }
+.admin-table th:not(:first-child), .admin-table td:not(:first-child) { text-align: right; width: 72px; }
+.admin-table tr:last-child td { border-bottom: 0; }
+.doc-info { min-width: 0; }
+.doc-name { font-weight: 500; overflow-wrap: anywhere; }
+.btn:disabled { opacity: .55; cursor: default; }

@@ -4,6 +4,7 @@ import { readJSON, writeJSON, remove } from "../lib/storage";
 export interface User {
   email: string;
   created_at: string;
+  is_admin?: boolean;
 }
 
 /**
@@ -13,6 +14,8 @@ export interface User {
  *   GET    /me                                                  -> {email, created_at}
  *   POST   /me/password    {current_password, new_password}     -> 204
  *   DELETE /me                                                  -> 204
+ *   POST   /auth/forgot   {email}                              -> 204
+ *   POST   /auth/reset    {token, new_password}                -> 204
  *
  * Пока их нет, VITE_MOCK_AUTH=true включает заглушку: аккаунты хранятся в браузере.
  * Заглушка только для разработки — пароли в ней не защищены.
@@ -45,6 +48,12 @@ const real = {
   },
   async deleteAccount() {
     await request("/me", { method: "DELETE" });
+  },
+  async forgotPassword(email: string) {
+    await request("/auth/forgot", { method: "POST", body: JSON.stringify({ email }) });
+  },
+  async resetPassword(token: string, new_password: string) {
+    await request("/auth/reset", { method: "POST", body: JSON.stringify({ token, new_password }) });
   },
 };
 
@@ -88,6 +97,13 @@ const mock = {
     const all = users();
     delete all[getToken()!];
     writeJSON(USERS_KEY, all);
+  },
+  async forgotPassword(_email: string) {
+    await delay();
+  },
+  async resetPassword(_token: string, _password: string) {
+    await delay();
+    throw new ApiError("В демонстрационном режиме сброс пароля недоступен", 400);
   },
 };
 

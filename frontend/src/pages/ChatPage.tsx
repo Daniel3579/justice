@@ -18,7 +18,7 @@ function toHistory(messages: Message[]): ChatTurn[] {
   for (const m of messages) {
     if (m.role === "user") turns.push({ role: "user", content: m.text });
     else if (m.role === "assistant")
-      turns.push({ role: "assistant", content: m.kind === "answer" ? m.text : "[Составлено исковое заявление]" });
+      turns.push({ role: "assistant", content: m.kind === "isk" || !m.kind ? "[Составлено исковое заявление]" : m.text });
   }
   return turns;
 }
@@ -47,10 +47,13 @@ export function ChatPage() {
     let reply: Message;
     try {
       const data = await sendChat(text, toHistory(previous), latestCase(previous));
-      reply =
-        data.type === "isk"
-          ? { role: "assistant", kind: "isk", text: data.case.isk, case: data.case, updated: data.updated }
-          : { role: "assistant", kind: "answer", text: data.answer };
+      if (data.type === "isk") {
+        reply = { role: "assistant", kind: "isk", text: data.case.isk, case: data.case, updated: data.updated };
+      } else if (data.type === "off_topic") {
+        reply = { role: "assistant", kind: "off_topic", text: data.text };
+      } else {
+        reply = { role: "assistant", kind: "answer", text: data.answer };
+      }
     } catch (e) {
       reply = { role: "error", text: e instanceof Error ? e.message : "Не удалось получить ответ" };
     }

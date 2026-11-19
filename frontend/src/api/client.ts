@@ -42,7 +42,8 @@ async function errorMessage(r: Response): Promise<string> {
 export async function request(path: string, init: RequestInit = {}): Promise<Response> {
   const token = readJSON<string | null>(TOKEN_KEY, null);
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type"))
+    headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   let r: Response;

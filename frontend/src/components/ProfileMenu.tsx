@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../lib/theme";
 import { Avatar } from "./Avatar";
-import { LogoutIcon, MoonIcon, UserIcon } from "./Icons";
+import { LogoutIcon, MoonIcon, ShieldIcon, UserIcon } from "./Icons";
 
 /** Иконка профиля в левом нижнем углу и всплывающее меню. */
 export function ProfileMenu({ onNavigate }: { onNavigate: () => void }) {
@@ -41,6 +41,11 @@ export function ProfileMenu({ onNavigate }: { onNavigate: () => void }) {
           <button className="pop-row" onClick={() => { setOpen(false); navigate("/profile"); onNavigate(); }}>
             <UserIcon /> Профиль
           </button>
+          {user.is_admin && (
+            <button className="pop-row" onClick={() => { setOpen(false); navigate("/admin-panel"); onNavigate(); }}>
+              <ShieldIcon /> Администрирование
+            </button>
+          )}
           <button className="pop-row" onClick={toggle}>
             <MoonIcon /> Сменить тему
           </button>

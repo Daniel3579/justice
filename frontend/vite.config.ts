@@ -14,6 +14,7 @@ export default defineConfig({
       "/export": API,
       "/auth": API,
       "/me": API,
+      "/admin/": API,
     },
   },
 });

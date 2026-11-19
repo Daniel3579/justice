@@ -8,7 +8,7 @@ export type Message =
   | { role: "error"; text: string }
   | {
       role: "assistant";
-      kind?: "isk" | "answer";
+      kind?: "isk" | "answer" | "off_topic";
       text: string;
       case?: CaseState;
       updated?: boolean;

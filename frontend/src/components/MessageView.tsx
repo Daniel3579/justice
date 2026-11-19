@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { exportDocx, type CaseState } from "../api/generate";
+import { exportFile, type CaseState, type ExportFormat } from "../api/generate";
 import type { Message } from "../lib/ChatsContext";
 import { downloadBlob } from "../lib/format";
 import { CopyIcon, DownloadIcon } from "./Icons";
@@ -30,6 +30,16 @@ export function MessageView({ m }: { m: Message }) {
     );
   }
   if (m.kind === "answer") return <AnswerView text={m.text} />;
+  if (m.kind === "off_topic") {
+    return (
+      <div className="msg">
+        <div className="offtopic">
+          <div className="offtopic-title">Запрос не по теме</div>
+          {m.text}
+        </div>
+      </div>
+    );
+  }
   return <IskView text={m.text} data={m.case} updated={m.updated} />;
 }
 
@@ -66,18 +76,20 @@ function AnswerView({ text }: { text: string }) {
   );
 }
 
-function IskView({ text, data, updated }: { text: string; data?: CaseState; updated?: boolean }) {
-  const [docxBusy, setDocxBusy] = useState(false);
+const EXPORTS: ExportFormat[] = ["docx", "pdf", "md"];
 
-  const docx = async () => {
+function IskView({ text, data, updated }: { text: string; data?: CaseState; updated?: boolean }) {
+  const [busy, setBusy] = useState<ExportFormat | null>(null);
+
+  const download = async (format: ExportFormat) => {
     if (!data) return;
-    setDocxBusy(true);
+    setBusy(format);
     try {
-      downloadBlob(await exportDocx(data.context), "iskovoe_zayavlenie.docx");
+      downloadBlob(await exportFile(data.context, format), `iskovoe_zayavlenie.${format}`);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Не удалось получить .docx");
+      alert(e instanceof Error ? e.message : `Не удалось получить .${format}`);
     } finally {
-      setDocxBusy(false);
+      setBusy(null);
     }
   };
 
@@ -95,11 +107,13 @@ function IskView({ text, data, updated }: { text: string; data?: CaseState; upda
         >
           <DownloadIcon />Скачать .txt
         </button>
-        {data && (
-          <button className="chip" onClick={docx} disabled={docxBusy}>
-            <DownloadIcon />{docxBusy ? "Готовлю .docx…" : "Скачать .docx"}
-          </button>
-        )}
+        {data &&
+          EXPORTS.map((format) => (
+            <button key={format} className="chip" onClick={() => download(format)} disabled={busy !== null}>
+              <DownloadIcon />
+              {busy === format ? `Готовлю .${format}…` : `Скачать .${format}`}
+            </button>
+          ))}
       </div>
 
       {data && data.missing.length > 0 && (

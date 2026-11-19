@@ -27,3 +27,6 @@ export const CopyIcon = () => (
 export const DownloadIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" {...base}><path d="M12 4v12m0 0-4-4m4 4 4-4M5 20h14" /></svg>
 );
+export const ShieldIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" {...base}><path d="M12 3 5 6v5c0 4.5 3 8.2 7 10 4-1.8 7-5.5 7-10V6z" /><path d="m9 12 2 2 4-4" /></svg>
+);
