@@ -1,20 +1,58 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-justice}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-justice}
+      POSTGRES_DB: ${POSTGRES_DB:-justice}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  adminer:
+    image: adminer:4
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    ports:
+      - "127.0.0.1:8081:8080"
+    depends_on:
+      - db
+    restart: unless-stopped
+
   backend:
     build:
       context: ./app
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-justice}:${POSTGRES_PASSWORD:-justice}@db:5432/${POSTGRES_DB:-justice}
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       LLM_MODEL: ${LLM_MODEL:-qwen3.5:4b}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - justice-data:/srv/data
-      - ./data/documents:/srv/data/documents:ro
+      - ./data/documents:/srv/data/documents
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -23,10 +61,11 @@ services:
       args:
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
     ports:
-      - "8080:80"
+      - "8082:80"
     depends_on:
       - backend
     restart: unless-stopped
 
 volumes:
   justice-data:
+  pg-data:

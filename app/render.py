@@ -1,6 +1,8 @@
 import io
 import re
 from datetime import date
+from pathlib import Path
+from xml.sax.saxutils import escape
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -8,8 +10,16 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
 from calc import calc_penalty, fmt_date, money, refund_amount
-from config import ISK_TEMPLATE, TEMPLATES_PATH
+from config import ISK_TEMPLATE, PDF_FONT_BOLD, PDF_FONT_REGULAR, TEMPLATES_PATH
 from schemas import CaseFacts, Composed
 
 NEED_RE = re.compile(r"\[ТРЕБУЕТСЯ УТОЧНЕНИЕ:\s*(.+?)\]")
@@ -231,4 +241,109 @@ def marked_to_docx(marked: str) -> bytes:
 
     buf = io.BytesIO()
     doc.save(buf)
+    return buf.getvalue()
+
+LIST_RE = re.compile(r"^\d+\.\s")
+
+
+def _md_kind(marker: str | None, text: str) -> str:
+    if marker in ("C", "B"):
+        return "bold"
+    if LIST_RE.match(text):
+        return "list"
+    if marker in ("R", "L"):
+        return "lines"
+    return "para"
+
+
+def marked_to_markdown(marked: str) -> str:
+    blocks: list[tuple[str, list[str]]] = []
+    for line in marked.splitlines():
+        m = MARKER_RE.match(line)
+        marker = m.group(1) if m else None
+        text = MARKER_RE.sub("", line).strip()
+        if not text:
+            blocks.append(("break", []))
+            continue
+        kind = _md_kind(marker, text)
+        if blocks and blocks[-1][0] == kind and kind in ("lines", "list"):
+            blocks[-1][1].append(text)
+        else:
+            blocks.append((kind, [text]))
+
+    out = []
+    for kind, lines in blocks:
+        if kind == "break":
+            continue
+        if kind == "bold":
+            out.append(f"**{lines[0]}**")
+        elif kind == "lines":
+            out.append("  \n".join(lines))
+        elif kind == "list":
+            out.append("\n".join(lines))
+        else:
+            out.append(lines[0])
+    return "\n\n".join(out) + "\n"
+
+
+FONT_CANDIDATES = [
+    ("/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+     "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"),
+    ("C:/Windows/Fonts/times.ttf", "C:/Windows/Fonts/timesbd.ttf"),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+     "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"),
+]
+_fonts_registered = False
+
+
+def _register_fonts():
+    global _fonts_registered
+    if _fonts_registered:
+        return
+    candidates = [(PDF_FONT_REGULAR, PDF_FONT_BOLD)] if PDF_FONT_REGULAR and PDF_FONT_BOLD else []
+    for regular, bold in candidates + FONT_CANDIDATES:
+        if Path(regular).exists() and Path(bold).exists():
+            pdfmetrics.registerFont(TTFont("IskSerif", regular))
+            pdfmetrics.registerFont(TTFont("IskSerif-Bold", bold))
+            pdfmetrics.registerFontFamily("IskSerif", normal="IskSerif", bold="IskSerif-Bold")
+            _fonts_registered = True
+            return
+    raise RuntimeError("Не найден шрифт с кириллицей для PDF. Укажите PDF_FONT_REGULAR и PDF_FONT_BOLD.")
+
+
+def _pdf_styles() -> dict[str, ParagraphStyle]:
+    base = ParagraphStyle("base", fontName="IskSerif", fontSize=14, leading=17)
+    return {
+        "R": ParagraphStyle("R", parent=base, leftIndent=8 * cm, alignment=TA_LEFT, leading=15),
+        "C": ParagraphStyle("C", parent=base, fontName="IskSerif-Bold", alignment=TA_CENTER),
+        "B": ParagraphStyle("B", parent=base, fontName="IskSerif-Bold", alignment=TA_LEFT),
+        "L": ParagraphStyle("L", parent=base, alignment=TA_LEFT),
+        None: ParagraphStyle("P", parent=base, alignment=TA_JUSTIFY, firstLineIndent=1.25 * cm),
+    }
+
+
+def marked_to_pdf(marked: str) -> bytes:
+    _register_fonts()
+    styles = _pdf_styles()
+    story = []
+    for line in marked.splitlines():
+        m = MARKER_RE.match(line)
+        marker = m.group(1) if m else None
+        text = MARKER_RE.sub("", line).rstrip()
+        if not text:
+            story.append(Spacer(1, 15 if marker == "R" else 17))
+            continue
+        story.append(Paragraph(escape(text), styles[marker]))
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=3 * cm,
+        rightMargin=1.5 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+        title="Исковое заявление",
+    )
+    doc.build(story)
     return buf.getvalue()

@@ -21,7 +21,12 @@ VIOLATION_QUERIES = {
     "refund_refusal": "отказ продавца вернуть деньги потребителю неустойка",
     "other": "нарушение прав потребителя",
 }
-INTENTS = {"new_case", "update", "question"}
+INTENTS = {"new_case", "update", "question", "off_topic"}
+OFF_TOPIC_TEXT = (
+    "Я помогаю только с юридическими вопросами — в первую очередь со спорами о защите прав потребителей. "
+    "Опишите ситуацию с покупкой, услугой или работой, и я подготовлю исковое заявление, "
+    "или задайте вопрос по своему делу."
+)
 TAG_FIND_RE = re.compile(r"\[((?:НОРМА|WEB)-\d+)\]")
 
 
@@ -172,10 +177,7 @@ def quick_intent(message: str, has_case: bool) -> str | None:
     return "question" if is_question else None
 
 # разделение запроса пользователя по намерению кейс или вопрос
-def classify_intent(message: str, case: dict | None) -> str:
-    quick = quick_intent(message, bool(case))
-    if quick:
-        return quick
+def classify_intent(message: str, case: dict | None) -> str:				
     data = ask_json(
         INTENT_PROMPT,
         has_case="да" if case else "нет",
@@ -188,6 +190,8 @@ def classify_intent(message: str, case: dict | None) -> str:
     if intent == "update" and not case:
         intent = "new_case"
     return intent
+
+
 
 
 # последние HISTORY_TURNS реплик -> текст для промпта
@@ -216,6 +220,8 @@ def handle_chat(message: str, history: list[dict], case: dict | None, draft: dic
     intent = classify_intent(message, case)
     logging.info(f"Намерение: {intent}")
 
+    if intent == "off_topic":
+        return {"type": "off_topic", "text": OFF_TOPIC_TEXT}
     if intent == "new_case":
         return {"type": "isk", "updated": False, "case": generate_case(message)}
     if intent == "update":

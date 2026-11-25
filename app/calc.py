@@ -5,6 +5,7 @@ from schemas import CaseFacts
 
 LAW = "Закона РФ «О защите прав потребителей»"
 
+# рассчет неустоек
 RULES = {
     "delay_goods": {
         "rate": Decimal("0.5"),
