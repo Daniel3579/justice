@@ -8,7 +8,7 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -36,7 +36,7 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       LLM_MODEL: ${LLM_MODEL:-qwen3.5:4b}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-admi@email.ru}
       APP_URL: ${APP_URL:-http://localhost:8080}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-465}
